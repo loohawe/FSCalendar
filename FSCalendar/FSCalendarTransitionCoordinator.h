@@ -11,17 +11,6 @@
 #import "FSCalendarCollectionViewLayout.h"
 #import "FSCalendarScopeHandle.h"
 
-typedef NS_ENUM(NSUInteger, FSCalendarTransition) {
-    FSCalendarTransitionNone,
-    FSCalendarTransitionMonthToWeek,
-    FSCalendarTransitionWeekToMonth
-};
-typedef NS_ENUM(NSUInteger, FSCalendarTransitionState) {
-    FSCalendarTransitionStateIdle,
-    FSCalendarTransitionStateChanging,
-    FSCalendarTransitionStateFinishing,
-};
-
 @interface FSCalendarTransitionCoordinator : NSObject <UIGestureRecognizerDelegate>
 
 @property (weak, nonatomic) FSCalendar *calendar;

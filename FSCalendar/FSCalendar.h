@@ -21,36 +21,13 @@
 #import "FSCalendarCell.h"
 #import "FSCalendarWeekdayView.h"
 #import "FSCalendarHeaderView.h"
+#import "FSCalendarTransitionCoordinator.h"
 
 //! Project version number for FSCalendar.
 FOUNDATION_EXPORT double FSCalendarVersionNumber;
 
 //! Project version string for FSCalendar.
 FOUNDATION_EXPORT const unsigned char FSCalendarVersionString[];
-
-typedef NS_ENUM(NSUInteger, FSCalendarScope) {
-    FSCalendarScopeMonth,
-    FSCalendarScopeWeek
-};
-
-typedef NS_ENUM(NSUInteger, FSCalendarScrollDirection) {
-    FSCalendarScrollDirectionVertical,
-    FSCalendarScrollDirectionHorizontal
-};
-
-typedef NS_ENUM(NSUInteger, FSCalendarPlaceholderType) {
-    FSCalendarPlaceholderTypeNone          = 0,
-    FSCalendarPlaceholderTypeFillHeadTail  = 1,
-    FSCalendarPlaceholderTypeFillSixRows   = 2
-};
-
-typedef NS_ENUM(NSUInteger, FSCalendarMonthPosition) {
-    FSCalendarMonthPositionPrevious,
-    FSCalendarMonthPositionCurrent,
-    FSCalendarMonthPositionNext,
-    
-    FSCalendarMonthPositionNotFound = NSNotFound
-};
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -128,6 +105,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)calendar:(FSCalendar *)calendar didSelectDate:(NSDate *)date atMonthPosition:(FSCalendarMonthPosition)monthPosition;
 
 /**
+ Tells the delegate a date in the calendar is double-click by tapping.
+ */
+- (void)calendar:(FSCalendar *)calendar doubleClickDate:(NSDate *)date atMonthPosition:(FSCalendarMonthPosition)monthPosition;
+
+/**
  Asks the delegate whether the specific date is allowed to be deselected by tapping.
  */
 - (BOOL)calendar:(FSCalendar *)calendar shouldDeselectDate:(NSDate *)date atMonthPosition:(FSCalendarMonthPosition)monthPosition;
@@ -152,6 +134,16 @@ NS_ASSUME_NONNULL_BEGIN
  Tells the delegate the calendar is about to change the current page.
  */
 - (void)calendarCurrentPageDidChange:(FSCalendar *)calendar;
+
+/**
+ Give the delegate a chance to change calendar`s cell when calendar has changed;
+ */
+- (void)calendar:(FSCalendar *)calendar cell:(FSCalendarCell *)cell toSize:(CGSize)size toScope:(FSCalendarScope)scope progress:(CGFloat)progress animated:(BOOL)animated;
+
+/**
+ When the geture that instance handled is active, Call it`s delegate to do something
+ */
+- (void)calendar:(FSCalendar *)calendar updatedGesture:(UIGestureRecognizer *)gesture;
 
 /**
  These functions are deprecated
@@ -438,6 +430,32 @@ IB_DESIGNABLE
  The dates representing the selected dates. (read-only)
  */
 @property (readonly, nonatomic) NSArray<NSDate *> *selectedDates;
+
+//-----luhao-----
+/**
+ A Boolen value that determines whether show top and bottom line biside calender
+ Default is YES
+ */
+@property (assign, nonatomic) BOOL showTopBottomBorder;
+
+/**
+ A CGFloat value that calendar height when big-month mode
+ Default is self`s bounds height * 1.5
+ if this view initial in storeboard or xib, this property value is 0
+ */
+@property (assign, nonatomic) CGFloat bigMonthHeight;
+
+/**
+ A Boolen value that whether change calendar to big-month mode
+ Default is NO
+ */
+@property (assign, nonatomic) BOOL allowBigMonthMode;
+
+/**
+ A Boolen value that whether change calendar to minimize when user up swipe in week mode
+ Default is NO
+ */
+@property (assign, nonatomic) BOOL allowMinimize;
 
 /**
  Reload the dates and appearance of the calendar.

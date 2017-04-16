@@ -47,7 +47,7 @@ class DIYCalendarCell: FSCalendarCell {
         self.contentView.layer.insertSublayer(selectionLayer, below: self.titleLabel!.layer)
         self.selectionLayer = selectionLayer
         
-        self.shapeLayer.isHidden = true
+        self.shapeView.isHidden = true
         
         let view = UIView(frame: self.bounds)
         view.backgroundColor = UIColor.lightGray.withAlphaComponent(0.12)

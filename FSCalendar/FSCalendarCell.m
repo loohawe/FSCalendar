@@ -48,7 +48,7 @@
 - (void)commonInit
 {   
     UILabel *label;
-    CAShapeLayer *shapeLayer;
+    UIView *shapeView;
     UIImageView *imageView;
     FSCalendarEventIndicator *eventIndicator;
     
@@ -64,13 +64,12 @@
     [self.contentView addSubview:label];
     self.subtitleLabel = label;
     
-    shapeLayer = [CAShapeLayer layer];
-    shapeLayer.backgroundColor = [UIColor clearColor].CGColor;
-    shapeLayer.borderWidth = 1.0;
-    shapeLayer.borderColor = [UIColor clearColor].CGColor;
-    shapeLayer.opacity = 0;
-    [self.contentView.layer insertSublayer:shapeLayer below:_titleLabel.layer];
-    self.shapeLayer = shapeLayer;
+    shapeView = [[UIView alloc] init];
+    shapeView.backgroundColor = [UIColor clearColor];
+    shapeView.layer.cornerRadius = 5.f;
+    shapeView.alpha = 0.f;
+    [self.contentView insertSubview:shapeView belowSubview:_titleLabel];
+    self.shapeView = shapeView;
     
     eventIndicator = [[FSCalendarEventIndicator alloc] initWithFrame:CGRectZero];
     eventIndicator.backgroundColor = [UIColor clearColor];
@@ -86,6 +85,10 @@
     self.clipsToBounds = NO;
     self.contentView.clipsToBounds = NO;
     
+    UITapGestureRecognizer *doubleClick = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(doubleClickGestureAction:)];
+    doubleClick.numberOfTapsRequired = 2;
+    [self.contentView addGestureRecognizer:doubleClick];
+    self.contentView.userInteractionEnabled = YES;
 }
 
 - (void)layoutSubviews
@@ -137,21 +140,17 @@
     CGFloat titleHeight = self.bounds.size.height*5.0/6.0;
     CGFloat diameter = MIN(self.bounds.size.height*5.0/6.0,self.bounds.size.width);
     diameter = diameter > FSCalendarStandardCellDiameter ? (diameter - (diameter-FSCalendarStandardCellDiameter)*0.5) : diameter;
-    _shapeLayer.frame = CGRectMake((self.bounds.size.width-diameter)/2,
+    _shapeView.frame = CGRectMake((self.bounds.size.width-diameter)/2,
                                    (titleHeight-diameter)/2,
                                    diameter,
                                    diameter);
     
-    CGPathRef path = [UIBezierPath bezierPathWithRoundedRect:_shapeLayer.bounds
-                                                cornerRadius:CGRectGetWidth(_shapeLayer.bounds)*0.5*self.borderRadius].CGPath;
-    if (!CGPathEqualToPath(_shapeLayer.path,path)) {
-        _shapeLayer.path = path;
-    }
+    _shapeView.layer.cornerRadius = CGRectGetWidth(_shapeView.bounds)*0.5*self.borderRadius;
     
-    CGFloat eventSize = _shapeLayer.frame.size.height/6.0;
+    CGFloat eventSize = _shapeView.frame.size.height/6.0;
     _eventIndicator.frame = CGRectMake(
                                        self.preferredEventOffset.x,
-                                       CGRectGetMaxY(_shapeLayer.frame)+eventSize*0.17+self.preferredEventOffset.y,
+                                       CGRectGetMaxY(_shapeView.frame)+eventSize*0.17+self.preferredEventOffset.y,
                                        self.fs_width,
                                        eventSize*0.83
                                       );
@@ -162,7 +161,7 @@
 {
     [super prepareForReuse];
     [CATransaction setDisableActions:YES];
-    _shapeLayer.opacity = 0;
+    _shapeView.alpha = 0;
     [self.contentView.layer removeAnimationForKey:@"opacity"];
 }
 
@@ -170,7 +169,7 @@
 
 - (void)performSelecting
 {
-    _shapeLayer.opacity = 1;
+    _shapeView.alpha = 1;
     
 #define kAnimationDuration FSCalendarDefaultBounceAnimationDuration
     
@@ -186,7 +185,7 @@
     zoomIn.duration = kAnimationDuration/4;
     group.duration = kAnimationDuration;
     group.animations = @[zoomOut, zoomIn];
-    [_shapeLayer addAnimation:group forKey:@"bounce"];
+    [_shapeView.layer addAnimation:group forKey:@"bounce"];
     [self configureAppearance];
     
 #undef kAnimationDuration
@@ -221,27 +220,22 @@
     
     BOOL shouldHideShapeLayer = !self.selected && !self.dateIsToday && !borderColor && !fillColor;
     
-    if (_shapeLayer.opacity == shouldHideShapeLayer) {
-        _shapeLayer.opacity = !shouldHideShapeLayer;
+    if (_shapeView.alpha == shouldHideShapeLayer) {
+        _shapeView.alpha = !shouldHideShapeLayer;
     }
     if (!shouldHideShapeLayer) {
         
         CGColorRef cellFillColor = self.colorForCellFill.CGColor;
-        if (!CGColorEqualToColor(_shapeLayer.fillColor, cellFillColor)) {
-            _shapeLayer.fillColor = cellFillColor;
+        if (!CGColorEqualToColor(_shapeView.backgroundColor.CGColor, cellFillColor)) {
+            _shapeView.backgroundColor = [UIColor colorWithCGColor:cellFillColor];
         }
         
         CGColorRef cellBorderColor = self.colorForCellBorder.CGColor;
-        if (!CGColorEqualToColor(_shapeLayer.strokeColor, cellBorderColor)) {
-            _shapeLayer.strokeColor = cellBorderColor;
+        if (!CGColorEqualToColor(_shapeView.layer.borderColor, cellBorderColor)) {
+            _shapeView.layer.borderColor = cellBorderColor;
         }
         
-        CGPathRef path = [UIBezierPath bezierPathWithRoundedRect:_shapeLayer.bounds
-                                                    cornerRadius:CGRectGetWidth(_shapeLayer.bounds)*0.5*self.borderRadius].CGPath;
-        if (!CGPathEqualToPath(_shapeLayer.path, path)) {
-            _shapeLayer.path = path;
-        }
-        
+        _shapeView.layer.cornerRadius = CGRectGetWidth(_shapeView.bounds)*0.5*self.borderRadius;
     }
     
     if (![_image isEqual:_imageView.image]) {
@@ -255,6 +249,7 @@
     
     _eventIndicator.numberOfEvents = self.numberOfEvents;
     _eventIndicator.color = self.colorsForEvents;
+    
 
 }
 
@@ -276,6 +271,12 @@
         return dictionary[@(FSCalendarCellStateWeekend)];
     }
     return dictionary[@(FSCalendarCellStateNormal)];
+}
+
+- (void)doubleClickGestureAction:(UIGestureRecognizer *)gesture {
+    if (self.doubleClickAction) {
+        self.doubleClickAction(self);
+    }
 }
 
 #pragma mark - Properties
@@ -378,6 +379,7 @@ OFFSET_PROPERTY(preferredEventOffset, PreferredEventOffset, _appearance.eventOff
 @property (weak, nonatomic) UIView *contentView;
 
 @property (strong, nonatomic) NSPointerArray *eventLayers;
+@property (assign, nonatomic) BOOL needsInvalidatingColor;
 
 @end
 
@@ -399,6 +401,8 @@ OFFSET_PROPERTY(preferredEventOffset, PreferredEventOffset, _appearance.eventOff
             [self.contentView.layer addSublayer:layer];
             [self.eventLayers addPointer:(__bridge void * _Nullable)(layer)];
         }
+        
+        _needsInvalidatingColor = YES;
         
     }
     return self;
@@ -429,6 +433,25 @@ OFFSET_PROPERTY(preferredEventOffset, PreferredEventOffset, _appearance.eventOff
                 }
             }
         }
+        
+        if (_needsInvalidatingColor) {
+            _needsInvalidatingColor = NO;
+            if ([_color isKindOfClass:[UIColor class]]) {
+                [self.eventLayers.allObjects makeObjectsPerformSelector:@selector(setBackgroundColor:) withObject:(id)[_color CGColor]];
+            } else if ([_color isKindOfClass:[NSArray class]]) {
+                NSArray *colors = (NSArray *)_color;
+                if (colors.count) {
+                    UIColor *lastColor = colors.firstObject;
+                    for (int i = 0; i < self.eventLayers.count; i++) {
+                        if (i < colors.count) {
+                            lastColor = colors[i];
+                        }
+                        CALayer *eventLayer = [self.eventLayers pointerAtIndex:i];
+                        eventLayer.backgroundColor = lastColor.CGColor;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -436,20 +459,8 @@ OFFSET_PROPERTY(preferredEventOffset, PreferredEventOffset, _appearance.eventOff
 {
     if (![_color isEqual:color]) {
         _color = color;
-        
-        if ([_color isKindOfClass:[UIColor class]]) {
-            for (NSInteger i = 0; i < self.eventLayers.count; i++) {
-                CALayer *layer = [self.eventLayers pointerAtIndex:i];
-                layer.backgroundColor = [_color CGColor];
-            }
-        } else if ([_color isKindOfClass:[NSArray class]]) {
-            NSArray<UIColor *> *colors = (NSArray *)_color;
-            for (int i = 0; i < self.eventLayers.count; i++) {
-                CALayer *eventLayer = [self.eventLayers pointerAtIndex:i];
-                eventLayer.backgroundColor = colors[MIN(i,colors.count-1)].CGColor;
-            }
-        }
-        
+        _needsInvalidatingColor = YES;
+        [self setNeedsLayout];
     }
 }
 

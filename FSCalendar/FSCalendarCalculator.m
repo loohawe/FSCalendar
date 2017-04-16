@@ -98,6 +98,7 @@
 {
     if (!indexPath) return nil;
     switch (scope) {
+        case FSCalendarScopeBigMonth:
         case FSCalendarScopeMonth: {
             NSDate *head = [self monthHeadForSection:indexPath.section];
             NSUInteger daysOffset = indexPath.item;
@@ -105,7 +106,8 @@
             return date;
             break;
         }
-        case FSCalendarScopeWeek: {
+        case FSCalendarScopeWeek:
+        case FSCalendarScopeMinimize: {
             NSDate *currentPage = [self weekForSection:indexPath.section];
             NSDate *date = [self.gregorian dateByAddingUnit:NSCalendarUnitDay value:indexPath.item toDate:currentPage options:0];
             return date;
@@ -136,6 +138,7 @@
     NSInteger item = 0;
     NSInteger section = 0;
     switch (scope) {
+        case FSCalendarScopeBigMonth:
         case FSCalendarScopeMonth: {
             section = [self.gregorian components:NSCalendarUnitMonth fromDate:[self.gregorian fs_firstDayOfMonth:self.minimumDate] toDate:[self.gregorian fs_firstDayOfMonth:date] options:0].month;
             if (position == FSCalendarMonthPositionPrevious) {
@@ -147,13 +150,14 @@
             item = [self.gregorian components:NSCalendarUnitDay fromDate:head toDate:date options:0].day;
             break;
         }
-        case FSCalendarScopeWeek: {
+        case FSCalendarScopeWeek:
+        case FSCalendarScopeMinimize: {
             section = [self.gregorian components:NSCalendarUnitWeekOfYear fromDate:[self.gregorian fs_firstDayOfWeek:self.minimumDate] toDate:[self.gregorian fs_firstDayOfWeek:date] options:0].weekOfYear;
             item = (([self.gregorian component:NSCalendarUnitWeekday fromDate:date] - self.gregorian.firstWeekday) + 7) % 7;
             break;
         }
     }
-    if (item < 0 || section < 0) {
+    if (item < 0) {
         return nil;
     }
     NSIndexPath *indexPath = [NSIndexPath indexPathForItem:item inSection:section];
@@ -168,9 +172,13 @@
 - (NSDate *)pageForSection:(NSInteger)section
 {
     switch (self.calendar.transitionCoordinator.representingScope) {
+        case FSCalendarScopeMinimize:
+            return [self.gregorian fs_middleDayOfWeek:[self weekForSection:section]];;
         case FSCalendarScopeWeek:
             return [self.gregorian fs_middleDayOfWeek:[self weekForSection:section]];
         case FSCalendarScopeMonth:
+            return [self monthForSection:section];
+        case FSCalendarScopeBigMonth:
             return [self monthForSection:section];
         default:
             break;
@@ -222,10 +230,16 @@
         return self.numberOfMonths;
     } else {
         switch (self.calendar.transitionCoordinator.representingScope) {
+            case FSCalendarScopeBigMonth: {
+                return self.numberOfMonths;
+            }
             case FSCalendarScopeMonth: {
                 return self.numberOfMonths;
             }
             case FSCalendarScopeWeek: {
+                return self.numberOfWeeks;
+            }
+            case FSCalendarScopeMinimize: {
                 return self.numberOfWeeks;
             }
         }

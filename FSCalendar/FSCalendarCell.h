@@ -29,9 +29,9 @@ typedef NS_ENUM(NSUInteger, FSCalendarMonthPosition);
 
 
 /**
- The shape layer of the cell
+ The shape view of the cell
  */
-@property (weak, nonatomic) CAShapeLayer *shapeLayer;
+@property (weak, nonatomic) UIView *shapeView;
 
 /**
  The imageView below shape layer of the cell
@@ -79,6 +79,8 @@ typedef NS_ENUM(NSUInteger, FSCalendarMonthPosition);
 @property (strong, nonatomic) NSArray<UIColor *> *preferredEventDefaultColors;
 @property (strong, nonatomic) NSArray<UIColor *> *preferredEventSelectionColors;
 @property (assign, nonatomic) CGFloat preferredBorderRadius;
+
+@property (strong, nonatomic) void(^doubleClickAction)(FSCalendarCell *cell);
 
 // Add subviews to self.contentView and set up constraints
 - (instancetype)initWithFrame:(CGRect)frame NS_REQUIRES_SUPER;

@@ -40,6 +40,8 @@
 @property (strong, nonatomic) NSMutableDictionary<NSIndexPath *, UICollectionViewLayoutAttributes *> *headerAttributes;
 @property (strong, nonatomic) NSMutableDictionary<NSIndexPath *, UICollectionViewLayoutAttributes *> *rowSeparatorAttributes;
 
+@property (assign, nonatomic) CGRect lastCollectionShowBounds;
+
 - (void)didReceiveNotifications:(NSNotification *)notification;
 
 @end
@@ -67,6 +69,8 @@
         self.itemAttributes = [NSMutableDictionary dictionary];
         self.headerAttributes = [NSMutableDictionary dictionary];
         self.rowSeparatorAttributes = [NSMutableDictionary dictionary];
+        
+        self.lastCollectionShowBounds = CGRectZero;
         
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didReceiveNotifications:) name:UIDeviceOrientationDidChangeNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didReceiveNotifications:) name:UIScreenDidConnectNotification object:nil];
@@ -119,11 +123,13 @@
             CGFloat height = FSCalendarStandardRowHeight;
             if (!self.calendar.floatingMode) {
                 switch (self.calendar.transitionCoordinator.representingScope) {
+                    case FSCalendarScopeBigMonth:
                     case FSCalendarScopeMonth: {
                         height = (self.collectionView.fs_height-self.sectionInsets.top-self.sectionInsets.bottom)/6.0;
                         break;
                     }
-                    case FSCalendarScopeWeek: {
+                    case FSCalendarScopeWeek:
+                    case FSCalendarScopeMinimize: {
                         height = (self.collectionView.fs_height-self.sectionInsets.top-self.sectionInsets.bottom);
                         break;
                     }
@@ -285,8 +291,14 @@
                     }
                     endColumn;
                 });
-
-                NSInteger numberOfRows = self.calendar.transitionCoordinator.representingScope == FSCalendarScopeMonth ? 6 : 1;
+                
+                NSInteger numberOfRows = 1;
+                if (self.calendar.transitionCoordinator.representingScope == FSCalendarScopeBigMonth ||
+                    self.calendar.transitionCoordinator.representingScope == FSCalendarScopeMonth) {
+                    numberOfRows = 6;
+                } else {
+                    numberOfRows = 1;
+                }
                 
                 for (NSInteger column = startColumn; column <= endColumn; column++) {
                     for (NSInteger row = 0; row < numberOfRows; row++) {
@@ -488,6 +500,15 @@
         return attributes;
     }
     return nil;
+}
+
+- (BOOL)shouldInvalidateLayoutForBoundsChange:(CGRect)newBounds {
+    if (CGRectEqualToRect(self.lastCollectionShowBounds, newBounds)) {
+        return NO;
+    } else {
+        self.lastCollectionShowBounds = newBounds;
+        return YES;
+    }
 }
 
 #pragma mark - Notifications

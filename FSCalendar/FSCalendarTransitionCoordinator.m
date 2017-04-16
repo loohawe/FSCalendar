@@ -11,7 +11,8 @@
 #import "FSCalendarDynamicHeader.h"
 #import <objc/runtime.h>
 
-@interface FSCalendarTransitionCoordinator ()
+@interface FSCalendarTransitionCoordinator () {
+}
 
 @property (readonly, nonatomic) FSCalendarTransitionAttributes *transitionAttributes;
 @property (strong  , nonatomic) FSCalendarTransitionAttributes *pendingAttributes;
@@ -62,14 +63,8 @@
             [self scopeTransitionDidUpdate:sender];
             break;
         }
-        case UIGestureRecognizerStateEnded: {
-            [self scopeTransitionDidEnd:sender];
-            break;
-        }
-        case UIGestureRecognizerStateCancelled: {
-            [self scopeTransitionDidEnd:sender];
-            break;
-        }
+        case UIGestureRecognizerStateEnded:
+        case UIGestureRecognizerStateCancelled:
         case UIGestureRecognizerStateFailed: {
             [self scopeTransitionDidEnd:sender];
             break;
@@ -126,10 +121,20 @@
     
     CGPoint velocity = [panGesture velocityInView:panGesture.view];
     switch (self.calendar.scope) {
+        case FSCalendarScopeBigMonth: {
+            if (velocity.y < 0) {
+                self.state = FSCalendarTransitionStateChanging;
+                self.transition = FSCalendarTransitionBigMonthToMonth;
+            }
+            break;
+        }
         case FSCalendarScopeMonth: {
             if (velocity.y < 0) {
                 self.state = FSCalendarTransitionStateChanging;
                 self.transition = FSCalendarTransitionMonthToWeek;
+            } else if (velocity.y > 0) {
+                self.state = FSCalendarTransitionStateChanging;
+                self.transition = FSCalendarTransitionMonthToBigMonth;
             }
             break;
         }
@@ -137,6 +142,16 @@
             if (velocity.y > 0) {
                 self.state = FSCalendarTransitionStateChanging;
                 self.transition = FSCalendarTransitionWeekToMonth;
+            } else if (velocity.y < 0) {
+                self.state = FSCalendarTransitionStateChanging;
+                self.transition = FSCalendarTransitionWeekToMinimize;
+            }
+            break;
+        }
+        case FSCalendarScopeMinimize: {
+            if (velocity.y > 0) {
+                self.state = FSCalendarTransitionStateChanging;
+                self.transition = FSCalendarTransitionMinimizeToWeek;
             }
             break;
         }
@@ -152,7 +167,6 @@
         [self.calendar fs_setVariable:self.pendingAttributes.targetPage forKey:@"_currentPage"];
         [self prelayoutForWeekToMonthTransition];
         self.collectionView.fs_top = -self.pendingAttributes.focusedRowNumber*self.calendar.collectionViewLayout.estimatedItemSize.height;
-        
     }
 }
 
@@ -164,34 +178,37 @@
     
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
+    CGFloat progress = 0.f;
     switch (self.transition) {
-        case FSCalendarTransitionMonthToWeek: {
-            CGFloat progress = ({
+        case FSCalendarTransitionBigMonthToMonth:
+        case FSCalendarTransitionMonthToWeek:
+        case FSCalendarTransitionWeekToMinimize: {
+            progress = ({
                 CGFloat minTranslation = CGRectGetHeight(self.pendingAttributes.targetBounds) - CGRectGetHeight(self.pendingAttributes.sourceBounds);
                 translation = MAX(minTranslation, translation);
                 translation = MIN(0, translation);
                 CGFloat progress = translation/minTranslation;
                 progress;
             });
-            [self performAlphaAnimationWithProgress:progress];
-            [self performPathAnimationWithProgress:progress];
             break;
         }
-        case FSCalendarTransitionWeekToMonth: {
-            CGFloat progress = ({
+        case FSCalendarTransitionMinimizeToWeek:
+        case FSCalendarTransitionWeekToMonth:
+        case FSCalendarTransitionMonthToBigMonth: {
+            progress = ({
                 CGFloat maxTranslation = CGRectGetHeight(self.pendingAttributes.targetBounds) - CGRectGetHeight(self.pendingAttributes.sourceBounds);
                 translation = MIN(maxTranslation, translation);
                 translation = MAX(0, translation);
                 CGFloat progress = translation/maxTranslation;
                 progress;
             });
-            [self performAlphaAnimationWithProgress:progress];
-            [self performPathAnimationWithProgress:progress];
             break;
         }
         default:
             break;
     }
+    [self performPathAnimationWithProgress:progress];
+    [self performAlphaAnimationWithProgress:progress];
     [CATransaction commit];
     self.lastTranslation = translation;
 }
@@ -206,7 +223,9 @@
     CGFloat velocity = [panGesture velocityInView:panGesture.view].y;
     
     switch (self.transition) {
-        case FSCalendarTransitionMonthToWeek: {
+        case FSCalendarTransitionBigMonthToMonth:
+        case FSCalendarTransitionMonthToWeek:
+        case FSCalendarTransitionWeekToMinimize: {
             CGFloat progress = ({
                 CGFloat minTranslation = CGRectGetHeight(self.pendingAttributes.targetBounds) - CGRectGetHeight(self.pendingAttributes.sourceBounds);
                 translation = MAX(minTranslation, translation);
@@ -221,7 +240,9 @@
             }
             break;
         }
-        case FSCalendarTransitionWeekToMonth: {
+        case FSCalendarTransitionMinimizeToWeek:
+        case FSCalendarTransitionWeekToMonth:
+        case FSCalendarTransitionMonthToBigMonth: {
             CGFloat progress = ({
                 CGFloat maxTranslation = CGRectGetHeight(self.pendingAttributes.targetBounds) - CGRectGetHeight(self.pendingAttributes.sourceBounds);
                 translation = MAX(0, translation);
@@ -250,10 +271,18 @@
     
     self.transition = ({
         FSCalendarTransition transition = FSCalendarTransitionNone;
-        if (fromScope == FSCalendarScopeMonth && toScope == FSCalendarScopeWeek) {
+        if (fromScope == FSCalendarScopeBigMonth && toScope == FSCalendarScopeMonth) {
+            transition = FSCalendarTransitionBigMonthToMonth;
+        } else if (fromScope == FSCalendarScopeMonth && toScope == FSCalendarScopeWeek) {
             transition = FSCalendarTransitionMonthToWeek;
+        } else if (fromScope == FSCalendarScopeWeek && toScope == FSCalendarScopeMinimize) {
+            transition = FSCalendarTransitionWeekToMinimize;
+        } else if (fromScope == FSCalendarScopeMinimize && toScope == FSCalendarScopeWeek) {
+            transition = FSCalendarTransitionMinimizeToWeek;
         } else if (fromScope == FSCalendarScopeWeek && toScope == FSCalendarScopeMonth) {
             transition = FSCalendarTransitionWeekToMonth;
+        } else if (fromScope == FSCalendarScopeMonth && toScope == FSCalendarScopeBigMonth) {
+            transition = FSCalendarTransitionMonthToBigMonth;
         }
         transition;
     });
@@ -264,6 +293,37 @@
     self.pendingAttributes = attr;
     
     switch (self.transition) {
+        case FSCalendarTransitionBigMonthToMonth: {
+            if (animated) {
+                CGFloat duration = 0.22;
+                [UIView beginAnimations:nil context:nil];
+                [UIView setAnimationsEnabled:YES];
+                [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+                [UIView setAnimationDuration:duration];
+                [self boundingRectWillChange:attr.targetBounds animated:animated];
+                [self.collectionView performBatchUpdates:^{
+                    self.collectionView.fs_height = CGRectGetHeight(self.calendar.contentView.bounds)-self.calendar.preferredWeekdayHeight;
+                    [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                        NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                        UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                        [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMonth progress:1.f animated:animated];
+                    }];
+                } completion:^(BOOL finished) {
+                    [self performTransitionCompletionAnimated:YES];
+                }];
+                [UIView commitAnimations];
+            } else {
+                [self boundingRectWillChange:attr.targetBounds animated:animated];
+                self.collectionView.fs_height = CGRectGetHeight(self.calendar.contentView.bounds)-self.calendar.preferredWeekdayHeight;
+                [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMonth progress:1.f animated:animated];
+                }];
+                [self performTransitionCompletionAnimated:YES];
+            }
+            break;
+        }
             
         case FSCalendarTransitionMonthToWeek: {
             
@@ -297,10 +357,59 @@
             break;
         }
             
+        case FSCalendarTransitionWeekToMinimize: {
+            
+            if (animated) {
+                CGFloat duration = 0.22;
+                [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+                [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+                [UIView setAnimationDuration:duration];
+                [self boundingRectWillChange:attr.targetBounds animated:animated];
+                [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMinimize progress:1.f animated:animated];
+                }];
+                [UIView commitAnimations];
+            } else {
+                [self boundingRectWillChange:attr.targetBounds animated:animated];
+                [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMinimize progress:1.f animated:animated];
+                }];
+            }
+            [self performTransitionCompletionAnimated:YES];
+            break;
+        }
+            
+        case FSCalendarTransitionMinimizeToWeek: {
+            if (animated) {
+                [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+                [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+                [UIView setAnimationDuration:0.22f];
+                [self boundingRectWillChange:attr.targetBounds animated:animated];
+                [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeWeek progress:1.f animated:animated];
+                }];
+                [UIView commitAnimations];
+            } else {
+                [self boundingRectWillChange:attr.targetBounds animated:animated];
+                [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeWeek progress:1.f animated:animated];
+                }];
+            }
+            [self performTransitionCompletionAnimated:YES];
+            break;
+        }
+            
         case FSCalendarTransitionWeekToMonth: {
             
             [self.calendar fs_setVariable:attr.targetPage forKey:@"_currentPage"];
-            
             [self prelayoutForWeekToMonthTransition];
             
             if (animated) {
@@ -333,6 +442,51 @@
             }
             break;
         }
+            
+        case FSCalendarTransitionMonthToBigMonth: {
+            if (animated) {
+                CGFloat duration = 0.3;
+                [CATransaction begin];
+                [CATransaction setDisableActions:NO];
+                
+                [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+                [UIView setAnimationsEnabled:YES];
+                [UIView setAnimationCurve:UIViewAnimationCurveLinear];
+                [UIView setAnimationDuration:duration];
+                if (self.calendar.delegate && ([self.calendar.delegate respondsToSelector:@selector(calendar:boundingRectWillChange:animated:)] || [self.calendar.delegate respondsToSelector:@selector(calendarCurrentScopeWillChange:animated:)])) {
+                    [self boundingRectWillChange:attr.targetBounds animated:animated];
+                }
+                
+                [self.collectionView performBatchUpdates:^{
+                    self.collectionView.fs_height = CGRectGetHeight(self.calendar.contentView.bounds)-self.calendar.preferredWeekdayHeight;
+                    [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                        NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                        UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                        [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeBigMonth progress:1.f animated:animated];
+                    }];
+                } completion:^(BOOL finished) {
+                    
+                }];
+                [UIView commitAnimations];
+                [CATransaction commit];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(300 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+                    [self performTransitionCompletionAnimated:YES];
+                });
+            } else {
+                [self boundingRectWillChange:attr.targetBounds animated:animated];
+                [self.collectionView performBatchUpdates:^{
+                    self.collectionView.fs_height = CGRectGetHeight(self.calendar.contentView.bounds)-self.calendar.preferredWeekdayHeight;
+                    [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                        NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                        UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                        [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeBigMonth progress:1.f animated:animated];
+                    }];
+                } completion:nil];
+                [self performTransitionCompletionAnimated:YES];
+            }
+            break;
+        }
+            
         default:
             break;
     }
@@ -370,14 +524,16 @@
 
 #pragma mark - Private properties
 
-- (void)performTransitionCompletionAnimated:(BOOL)animated
-{
+- (void)performTransitionCompletionAnimated:(BOOL)animated {
     [self performTransitionCompletion:self.transition animated:animated];
 }
 
 - (void)performTransitionCompletion:(FSCalendarTransition)transition animated:(BOOL)animated
 {
     switch (transition) {
+        case FSCalendarTransitionBigMonthToMonth: {
+            break;
+        }
         case FSCalendarTransitionMonthToWeek: {
             [self.calendar.visibleCells enumerateObjectsUsingBlock:^(UICollectionViewCell *obj, NSUInteger idx, BOOL * stop) {
                 obj.contentView.layer.opacity = 1;
@@ -389,6 +545,12 @@
             [self.calendar.calendarHeaderView reloadData];
             break;
         }
+        case FSCalendarTransitionWeekToMinimize: {
+            break;
+        }
+        case FSCalendarTransitionMinimizeToWeek: {
+            break;
+        }
         case FSCalendarTransitionWeekToMonth: {
             self.calendar.needsAdjustingViewFrame = YES;
             [self.calendar.visibleCells enumerateObjectsUsingBlock:^(UICollectionViewCell *obj, NSUInteger idx, BOOL * stop) {
@@ -398,6 +560,9 @@
                 [CATransaction commit];
                 [obj.contentView.layer removeAnimationForKey:@"opacity"];
             }];
+            break;
+        }
+        case FSCalendarTransitionMonthToBigMonth: {
             break;
         }
         default:
@@ -417,6 +582,15 @@
     attributes.sourceBounds = self.calendar.bounds;
     attributes.sourcePage = self.calendar.currentPage;
     switch (self.transition) {
+            
+        case FSCalendarTransitionBigMonthToMonth: {
+            attributes.focusedDate = nil;
+            attributes.focusedRowNumber = 0;
+            attributes.targetPage = self.calendar.currentPage;
+            attributes.firstDayOfMonth = nil;
+            attributes.targetBounds = [self boundingRectForScope:FSCalendarScopeMonth page:attributes.targetPage];
+            break;
+        }
             
         case FSCalendarTransitionMonthToWeek: {
 
@@ -451,6 +625,22 @@
             attributes.targetPage = targetPage;
             attributes.targetBounds = [self boundingRectForScope:FSCalendarScopeWeek page:attributes.targetPage];
             
+            break;
+        }
+        case FSCalendarTransitionWeekToMinimize: {
+            attributes.focusedDate = nil;
+            attributes.focusedRowNumber = 0;
+            attributes.targetPage = self.calendar.currentPage;
+            attributes.firstDayOfMonth = nil;
+            attributes.targetBounds = [self boundingRectForScope:FSCalendarScopeMinimize page:attributes.targetPage];
+            break;
+        }
+        case FSCalendarTransitionMinimizeToWeek: {
+            attributes.focusedDate = nil;
+            attributes.focusedRowNumber = 0;
+            attributes.targetPage = self.calendar.currentPage;
+            attributes.firstDayOfMonth = nil;
+            attributes.targetBounds = [self boundingRectForScope:FSCalendarScopeWeek page:attributes.targetPage];
             break;
         }
         case FSCalendarTransitionWeekToMonth: {
@@ -500,6 +690,15 @@
             
             break;
         }
+            
+        case FSCalendarTransitionMonthToBigMonth: {
+            attributes.focusedDate = nil;
+            attributes.focusedRowNumber = 0;
+            attributes.targetPage = self.calendar.currentPage;
+            attributes.firstDayOfMonth = nil;
+            attributes.targetBounds = [self boundingRectForScope:FSCalendarScopeBigMonth page:attributes.targetPage];
+            break;
+        }
         default:
             break;
     }
@@ -527,6 +726,12 @@
 {
     CGSize contentSize;
     switch (scope) {
+        case FSCalendarScopeBigMonth: {
+            CGRect calendarFrame = self.calendar.bounds;
+            calendarFrame.size.height = self.calendar.bigMonthHeight;
+            contentSize = calendarFrame.size;
+            break;
+        }
         case FSCalendarScopeMonth: {
             if (self.calendar.placeholderType == FSCalendarPlaceholderTypeFillSixRows) {
                 contentSize = self.cachedMonthSize;
@@ -543,8 +748,13 @@
             contentSize = [self.calendar sizeThatFits:self.calendar.frame.size scope:scope];
             break;
         }
+        case FSCalendarScopeMinimize: {
+            CGRect calendarFrame = self.calendar.bounds;
+            contentSize = CGSizeMake(calendarFrame.size.width, 0);
+            break;
+        }
     }
-    return (CGRect){CGPointZero,contentSize};
+    return (CGRect){CGPointZero, contentSize};
 }
 
 - (void)boundingRectWillChange:(CGRect)targetBounds animated:(BOOL)animated
@@ -552,14 +762,44 @@
     self.calendar.scopeHandle.fs_bottom = CGRectGetMaxY(targetBounds);
     self.calendar.bottomBorder.fs_top = CGRectGetMaxY(targetBounds);
     self.calendar.contentView.fs_height = CGRectGetHeight(targetBounds)-self.calendar.scopeHandle.fs_height;
-    self.calendar.daysContainer.fs_height = CGRectGetHeight(targetBounds)-self.calendar.preferredHeaderHeight-self.calendar.preferredWeekdayHeight-self.calendar.scopeHandle.fs_height;
-    [[self.calendar valueForKey:@"delegateProxy"] calendar:self.calendar boundingRectWillChange:targetBounds animated:animated];
+    self.calendar.daysContainer.fs_height = MAX(0, self.calendar.contentView.fs_height-self.calendar.preferredHeaderHeight-self.calendar.preferredWeekdayHeight);
+    [self.calendar.delegateProxy calendar:self.calendar boundingRectWillChange:targetBounds animated:YES];
 }
 
 - (void)performForwardTransition:(FSCalendarTransition)transition fromProgress:(CGFloat)progress
 {
     FSCalendarTransitionAttributes *attr = self.pendingAttributes;
     switch (transition) {
+        case FSCalendarTransitionBigMonthToMonth: {
+            [self.calendar willChangeValueForKey:@"scope"];
+            [self.calendar fs_setUnsignedIntegerVariable:FSCalendarScopeMonth forKey:@"_scope"];
+            [self.calendar didChangeValueForKey:@"scope"];
+            
+            CGFloat duration = 0.3;
+            [CATransaction begin];
+            [CATransaction setDisableActions:NO];
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationsEnabled:YES];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseIn];
+            [UIView setAnimationDuration:duration];
+            [self boundingRectWillChange:attr.targetBounds animated:YES];
+            [self.collectionView performBatchUpdates:^{
+                self.collectionView.fs_height = CGRectGetHeight(self.calendar.contentView.bounds)-self.calendar.preferredWeekdayHeight;
+                [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMonth progress:1.f animated:YES];
+                }];
+            } completion:^(BOOL finished) {
+                
+            }];
+            [UIView commitAnimations];
+            [CATransaction commit];
+            
+            [self performTransitionCompletionAnimated:YES];
+            
+            break;
+        }
         case FSCalendarTransitionMonthToWeek: {
             
             [self.calendar willChangeValueForKey:@"scope"];
@@ -576,15 +816,59 @@
                 [self performTransitionCompletionAnimated:YES];
             }];
             
-            if (self.calendar.delegate && ([self.calendar.delegate respondsToSelector:@selector(calendar:boundingRectWillChange:animated:)] || [self.calendar.delegate respondsToSelector:@selector(calendarCurrentScopeWillChange:animated:)])) {
-                [UIView beginAnimations:@"delegateTranslation" context:"translation"];
-                [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
-                [UIView setAnimationDuration:duration];
-                self.collectionView.fs_top = -attr.focusedRowNumber*self.calendar.collectionViewLayout.estimatedItemSize.height;
-                [self boundingRectWillChange:attr.targetBounds animated:YES];
-                [UIView commitAnimations];
-            }
+            [CATransaction begin];
+            [CATransaction setDisableActions:NO];
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationsEnabled:YES];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+            [UIView setAnimationDuration:duration];
+            self.collectionView.fs_top = -attr.focusedRowNumber*self.calendar.collectionViewLayout.estimatedItemSize.height;
+            [self boundingRectWillChange:attr.targetBounds animated:YES];
+            [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeWeek progress:1.f animated:YES];
+            }];
+            [UIView commitAnimations];
+            [CATransaction commit];
             
+            break;
+        }
+        case FSCalendarTransitionWeekToMinimize: {
+            [self.calendar willChangeValueForKey:@"scope"];
+            [self.calendar fs_setUnsignedIntegerVariable:FSCalendarScopeMinimize forKey:@"_scope"];
+            [self.calendar didChangeValueForKey:@"scope"];
+            
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+            [UIView setAnimationDuration:0.3f];
+            [self boundingRectWillChange:attr.targetBounds animated:YES];
+            [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMinimize progress:1.f animated:YES];
+            }];
+            [UIView commitAnimations];
+            [self performTransitionCompletionAnimated:YES];
+            break;
+        }
+        case FSCalendarTransitionMinimizeToWeek: {
+            [self.calendar willChangeValueForKey:@"scope"];
+            [self.calendar fs_setUnsignedIntegerVariable:FSCalendarScopeWeek forKey:@"_scope"];
+            [self.calendar didChangeValueForKey:@"scope"];
+            
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+            [UIView setAnimationDuration:0.3f];
+            [self boundingRectWillChange:attr.targetBounds animated:YES];
+            [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeWeek progress:1.f animated:YES];
+            }];
+            [UIView commitAnimations];
+            
+            [self performTransitionCompletionAnimated:YES];
             break;
         }
         case FSCalendarTransitionWeekToMonth: {
@@ -601,16 +885,54 @@
             [CATransaction begin];
             [CATransaction setDisableActions:NO];
             
-            if (self.calendar.delegate && ([self.calendar.delegate respondsToSelector:@selector(calendar:boundingRectWillChange:animated:)] || [self.calendar.delegate respondsToSelector:@selector(calendarCurrentScopeWillChange:animated:)])) {
-                [UIView beginAnimations:@"delegateTranslation" context:"translation"];
-                [UIView setAnimationsEnabled:YES];
-                [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
-                [UIView setAnimationDuration:duration];
-                self.collectionView.fs_top = 0;
-                [self boundingRectWillChange:attr.targetBounds animated:YES];
-                [UIView commitAnimations];
-            }
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationsEnabled:YES];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+            [UIView setAnimationDuration:duration];
+            self.collectionView.fs_top = 0;
+            [self boundingRectWillChange:attr.targetBounds animated:YES];
+            [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMonth progress:1.f animated:YES];
+            }];
+            [UIView commitAnimations];
             [CATransaction commit];
+            break;
+        }
+        case FSCalendarTransitionMonthToBigMonth: {
+            
+            [self.calendar willChangeValueForKey:@"scope"];
+            [self.calendar fs_setUnsignedIntegerVariable:FSCalendarScopeBigMonth forKey:@"_scope"];
+            [self.calendar didChangeValueForKey:@"scope"];
+            
+            CGFloat duration = 0.3;
+            [CATransaction begin];
+            [CATransaction setDisableActions:NO];
+            
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationsEnabled:YES];
+            [UIView setAnimationCurve:UIViewAnimationCurveLinear];
+            [UIView setAnimationDuration:duration];
+            if (self.calendar.delegate && ([self.calendar.delegate respondsToSelector:@selector(calendar:boundingRectWillChange:animated:)] || [self.calendar.delegate respondsToSelector:@selector(calendarCurrentScopeWillChange:animated:)])) {
+                [self boundingRectWillChange:attr.targetBounds animated:YES];
+            }
+            
+            [self.collectionView performBatchUpdates:^{
+                self.collectionView.fs_height = CGRectGetHeight(self.calendar.contentView.bounds)-self.calendar.preferredWeekdayHeight;
+                [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeBigMonth progress:1.f animated:YES];
+                }];
+            } completion:^(BOOL finished) {
+                
+            }];
+            [UIView commitAnimations];
+            [CATransaction commit];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(300 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+                [self performTransitionCompletionAnimated:YES];
+            });
             break;
         }
         default:
@@ -621,6 +943,32 @@
 - (void)performBackwardTransition:(FSCalendarTransition)transition fromProgress:(CGFloat)progress
 {
     switch (transition) {
+        case FSCalendarTransitionBigMonthToMonth: {
+            [self.calendar willChangeValueForKey:@"scope"];
+            [self.calendar fs_setUnsignedIntegerVariable:FSCalendarScopeBigMonth forKey:@"_scope"];
+            [self.calendar didChangeValueForKey:@"scope"];
+            
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationsEnabled:YES];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseOut];
+            [UIView setAnimationDuration:0.3];
+            [self boundingRectWillChange:self.pendingAttributes.sourceBounds animated:YES];
+            [self.collectionView performBatchUpdates:^{
+                self.calendar.collectionView.fs_height = CGRectGetHeight(self.calendar.contentView.bounds)-self.calendar.preferredWeekdayHeight;
+                [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeBigMonth progress:1.f animated:YES];
+                }];
+            } completion:^(BOOL finished) {
+                
+            }];
+            [UIView commitAnimations];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(300 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+                [self performTransitionCompletion:FSCalendarTransitionBigMonthToMonth animated:YES];
+            });
+            break;
+        }
         case FSCalendarTransitionMonthToWeek: {
             
             [self.calendar willChangeValueForKey:@"scope"];
@@ -636,15 +984,57 @@
                 self.state = FSCalendarTransitionStateIdle;
             }];
             
-            if (self.calendar.delegate && ([self.calendar.delegate respondsToSelector:@selector(calendar:boundingRectWillChange:animated:)] || [self.calendar.delegate respondsToSelector:@selector(calendarCurrentScopeWillChange:animated:)])) {
-                [UIView beginAnimations:@"delegateTranslation" context:"translation"];
-                [UIView setAnimationsEnabled:YES];
-                [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
-                [UIView setAnimationDuration:0.3];
-                self.collectionView.fs_top = 0;
-                [self boundingRectWillChange:self.pendingAttributes.sourceBounds animated:YES];
-                [UIView commitAnimations];
-            }
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationsEnabled:YES];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+            [UIView setAnimationDuration:0.3];
+            self.collectionView.fs_top = 0;
+            [self boundingRectWillChange:self.pendingAttributes.sourceBounds animated:YES];
+            [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMonth progress:1.f animated:YES];
+            }];
+            [UIView commitAnimations];
+            [CATransaction commit];
+            break;
+        }
+        case FSCalendarTransitionWeekToMinimize: {
+            [self.calendar willChangeValueForKey:@"scope"];
+            [self.calendar fs_setUnsignedIntegerVariable:FSCalendarScopeWeek forKey:@"_scope"];
+            [self.calendar didChangeValueForKey:@"scope"];
+            
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+            [UIView setAnimationDuration:0.3f];
+            [self boundingRectWillChange:self.pendingAttributes.sourceBounds animated:YES];
+            [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeWeek progress:1.f animated:YES];
+            }];
+            [UIView commitAnimations];
+            [self performTransitionCompletionAnimated:YES];
+            break;
+        }
+        case FSCalendarTransitionMinimizeToWeek: {
+            [self.calendar willChangeValueForKey:@"scope"];
+            [self.calendar fs_setUnsignedIntegerVariable:FSCalendarScopeMinimize forKey:@"_scope"];
+            [self.calendar didChangeValueForKey:@"scope"];
+            
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+            [UIView setAnimationDuration:0.3f];
+            [self boundingRectWillChange:self.pendingAttributes.sourceBounds animated:YES];
+            [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMinimize progress:1.f animated:YES];
+            }];
+            [UIView commitAnimations];
+            [self performTransitionCompletionAnimated:YES];
             break;
         }
         case FSCalendarTransitionWeekToMonth: {
@@ -658,15 +1048,45 @@
                 [self performTransitionCompletion:FSCalendarTransitionMonthToWeek animated:YES];
             }];
             
-            if (self.calendar.delegate && ([self.calendar.delegate respondsToSelector:@selector(calendar:boundingRectWillChange:animated:)] || [self.calendar.delegate respondsToSelector:@selector(calendarCurrentScopeWillChange:animated:)])) {
-                [UIView beginAnimations:@"delegateTranslation" context:"translation"];
-                [UIView setAnimationsEnabled:YES];
-                [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
-                [UIView setAnimationDuration:0.3];
-                self.collectionView.fs_top = (-self.pendingAttributes.focusedRowNumber*self.calendar.collectionViewLayout.estimatedItemSize.height);
-                [self boundingRectWillChange:self.pendingAttributes.sourceBounds animated:YES];
-                [UIView commitAnimations];
-            }
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationsEnabled:YES];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+            [UIView setAnimationDuration:0.3];
+            self.collectionView.fs_top = (-self.pendingAttributes.focusedRowNumber*self.calendar.collectionViewLayout.estimatedItemSize.height);
+            [self boundingRectWillChange:self.pendingAttributes.sourceBounds animated:YES];
+            [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeWeek progress:1.f animated:YES];
+            }];
+            [UIView commitAnimations];
+            break;
+        }
+        case FSCalendarTransitionMonthToBigMonth: {
+            
+            [self.calendar willChangeValueForKey:@"scope"];
+            [self.calendar fs_setUnsignedIntegerVariable:FSCalendarScopeMonth forKey:@"_scope"];
+            [self.calendar didChangeValueForKey:@"scope"];
+            
+            [UIView beginAnimations:@"delegateTranslation" context:"translation"];
+            [UIView setAnimationsEnabled:YES];
+            [UIView setAnimationCurve:UIViewAnimationCurveEaseInOut];
+            [UIView setAnimationDuration:0.3];
+            [self boundingRectWillChange:self.pendingAttributes.sourceBounds animated:YES];
+            [self.collectionView performBatchUpdates:^{
+                self.calendar.collectionView.fs_height = CGRectGetHeight(self.calendar.contentView.bounds)-self.calendar.preferredWeekdayHeight;
+                [self.collectionView.visibleCells enumerateObjectsUsingBlock:^(__kindof FSCalendarCell * _Nonnull cell, NSUInteger idx, BOOL * _Nonnull stop) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMonth progress:1.f animated:YES];
+                }];
+            } completion:^(BOOL finished) {
+                
+            }];
+            [UIView commitAnimations];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(300 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+                [self performTransitionCompletion:FSCalendarTransitionBigMonthToMonth animated:YES];
+            });
             break;
         }
         default:
@@ -702,18 +1122,71 @@
 
 - (void)performAlphaAnimationWithProgress:(CGFloat)progress
 {
-    CGFloat opacity = self.transition == FSCalendarTransitionMonthToWeek ? MAX((1-progress*1.1),0) : progress;
-    [self.calendar.visibleCells enumerateObjectsUsingBlock:^(FSCalendarCell *cell, NSUInteger idx, BOOL *stop) {
-        if (CGRectContainsPoint(self.collectionView.bounds, cell.center)) {
-            BOOL shouldPerformAlpha = NO;
-            NSIndexPath *indexPath = [self.collectionView indexPathForCell:cell];
-            NSInteger row = [self.calendar.calculator coordinateForIndexPath:indexPath].row;
-            shouldPerformAlpha = row != self.pendingAttributes.focusedRowNumber;
-            if (shouldPerformAlpha) {
-                cell.contentView.layer.opacity = opacity;
-            }
+    switch (self.transition) {
+        case FSCalendarTransitionBigMonthToMonth: {
+            [self.calendar.visibleCells enumerateObjectsUsingBlock:^(FSCalendarCell *cell, NSUInteger idx, BOOL *stop) {
+                if (CGRectContainsPoint(self.collectionView.bounds, cell.center)) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMonth progress:progress animated:NO];
+                }
+            }];
+            break;
         }
-    }];
+        case FSCalendarTransitionMonthToWeek: {
+            CGFloat opacity = MAX((1-progress*1.1),0);
+            [self.calendar.visibleCells enumerateObjectsUsingBlock:^(FSCalendarCell *cell, NSUInteger idx, BOOL *stop) {
+                if (CGRectContainsPoint(self.collectionView.bounds, cell.center)) {
+                    BOOL shouldPerformAlpha = NO;
+                    NSIndexPath *indexPath = [self.collectionView indexPathForCell:cell];
+                    NSInteger row = [self.calendar.calculator coordinateForIndexPath:indexPath].row;
+                    shouldPerformAlpha = row != self.pendingAttributes.focusedRowNumber;
+                    if (shouldPerformAlpha) {
+                        cell.contentView.layer.opacity = opacity;
+                    }
+                    
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeWeek progress:progress animated:NO];
+                }
+            }];
+            break;
+        }
+        case FSCalendarTransitionWeekToMinimize: {
+            break;
+        }
+        case FSCalendarTransitionMinimizeToWeek: {
+            break;
+        }
+        case FSCalendarTransitionWeekToMonth: {
+            CGFloat opacity = progress;
+            [self.calendar.visibleCells enumerateObjectsUsingBlock:^(FSCalendarCell *cell, NSUInteger idx, BOOL *stop) {
+                if (CGRectContainsPoint(self.collectionView.bounds, cell.center)) {
+                    BOOL shouldPerformAlpha = NO;
+                    NSIndexPath *indexPath = [self.collectionView indexPathForCell:cell];
+                    NSInteger row = [self.calendar.calculator coordinateForIndexPath:indexPath].row;
+                    shouldPerformAlpha = row != self.pendingAttributes.focusedRowNumber;
+                    if (shouldPerformAlpha) {
+                        cell.contentView.layer.opacity = opacity;
+                    }
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeMonth progress:progress animated:NO];
+                }
+            }];
+            break;
+        }
+        case FSCalendarTransitionMonthToBigMonth: {
+            [self.calendar.visibleCells enumerateObjectsUsingBlock:^(FSCalendarCell *cell, NSUInteger idx, BOOL *stop) {
+                if (CGRectContainsPoint(self.collectionView.bounds, cell.center)) {
+                    NSIndexPath *indexPath =  [self.collectionView indexPathForCell:cell];
+                    UICollectionViewLayoutAttributes *toAttribute = [self.calendar.collectionViewLayout layoutAttributesForItemAtIndexPath:indexPath];
+                    [self.calendar.delegateProxy calendar:self.calendar cell:cell toSize:toAttribute.size toScope:FSCalendarScopeBigMonth progress:progress animated:NO];
+                }
+            }];
+            break;
+        }
+        default:
+            break;
+    }
 }
 
 - (void)performPathAnimationWithProgress:(CGFloat)progress
@@ -722,12 +1195,41 @@
     CGFloat sourceHeight = CGRectGetHeight(self.pendingAttributes.sourceBounds);
     CGFloat currentHeight = sourceHeight - (sourceHeight-targetHeight)*progress - self.calendar.scopeHandle.fs_height;
     CGRect currentBounds = CGRectMake(0, 0, CGRectGetWidth(self.pendingAttributes.targetBounds), currentHeight+self.calendar.scopeHandle.fs_height);
-    self.collectionView.fs_top = (-self.pendingAttributes.focusedRowNumber*self.calendar.collectionViewLayout.estimatedItemSize.height)*(self.transition == FSCalendarTransitionMonthToWeek?progress:(1-progress));
-    [self boundingRectWillChange:currentBounds animated:NO];
-    if (self.transition == FSCalendarTransitionWeekToMonth) {
-        self.calendar.contentView.fs_height = targetHeight;
+    switch (self.transition) {
+        case FSCalendarTransitionBigMonthToMonth: {
+            [self boundingRectWillChange:currentBounds animated:NO];
+            self.calendar.collectionView.fs_height = CGRectGetHeight(self.calendar.contentView.bounds)-self.calendar.preferredWeekdayHeight;
+            break;
+        }
+        case FSCalendarTransitionMonthToWeek: {
+            self.collectionView.fs_top = (-self.pendingAttributes.focusedRowNumber*self.calendar.collectionViewLayout.estimatedItemSize.height)*(self.transition == FSCalendarTransitionMonthToWeek?progress:(1-progress));
+            [self boundingRectWillChange:currentBounds animated:NO];
+            break;
+        }
+        case FSCalendarTransitionWeekToMinimize: {
+            [self boundingRectWillChange:currentBounds animated:NO];
+            break;
+        }
+        case FSCalendarTransitionMinimizeToWeek: {
+            [self boundingRectWillChange:currentBounds animated:NO];
+            break;
+        }
+        case FSCalendarTransitionWeekToMonth: {
+            self.collectionView.fs_top = (-self.pendingAttributes.focusedRowNumber*self.calendar.collectionViewLayout.estimatedItemSize.height)*(self.transition == FSCalendarTransitionMonthToWeek?progress:(1-progress));
+            [self boundingRectWillChange:currentBounds animated:NO];
+            self.calendar.contentView.fs_height = targetHeight;
+            break;
+        }
+        case FSCalendarTransitionMonthToBigMonth: {
+            [self boundingRectWillChange:currentBounds animated:NO];
+            self.calendar.collectionView.fs_height = CGRectGetHeight(self.calendar.contentView.bounds)-self.calendar.preferredWeekdayHeight;
+            break;
+        }
+        default:
+            break;
     }
 }
+
 
 
 - (void)prelayoutForWeekToMonthTransition

@@ -42,6 +42,9 @@
 @property (readonly, nonatomic) UIView *contentView;
 @property (readonly, nonatomic) UIView *daysContainer;
 
+@property (readonly, nonatomic) FSCalendarDelegationProxy  *dataSourceProxy;
+@property (readonly, nonatomic) FSCalendarDelegationProxy  *delegateProxy;
+
 @property (assign, nonatomic) BOOL needsAdjustingViewFrame;
 
 - (void)invalidateHeaders;

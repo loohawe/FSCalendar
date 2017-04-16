@@ -98,5 +98,48 @@ static inline void FSCalendarSliceCake(CGFloat cake, NSInteger count, CGFloat *p
     }
 }
 
+// FSCalendar main
+typedef NS_ENUM(NSUInteger, FSCalendarScope) {
+    FSCalendarScopeBigMonth = 0,
+    FSCalendarScopeMonth,
+    FSCalendarScopeWeek,
+    FSCalendarScopeMinimize
+};
+
+typedef NS_ENUM(NSUInteger, FSCalendarScrollDirection) {
+    FSCalendarScrollDirectionVertical,
+    FSCalendarScrollDirectionHorizontal
+};
+
+typedef NS_ENUM(NSUInteger, FSCalendarPlaceholderType) {
+    FSCalendarPlaceholderTypeNone          = 0,
+    FSCalendarPlaceholderTypeFillHeadTail  = 1,
+    FSCalendarPlaceholderTypeFillSixRows   = 2
+};
+
+typedef NS_ENUM(NSUInteger, FSCalendarMonthPosition) {
+    FSCalendarMonthPositionPrevious,
+    FSCalendarMonthPositionCurrent,
+    FSCalendarMonthPositionNext,
+    
+    FSCalendarMonthPositionNotFound = NSNotFound
+};
+
+// FSCalendar transition coordinator
+typedef NS_ENUM(NSUInteger, FSCalendarTransition) {
+    FSCalendarTransitionNone,
+    FSCalendarTransitionBigMonthToMonth,
+    FSCalendarTransitionMonthToWeek,
+    FSCalendarTransitionWeekToMinimize,
+    FSCalendarTransitionMinimizeToWeek,
+    FSCalendarTransitionWeekToMonth,
+    FSCalendarTransitionMonthToBigMonth
+};
+typedef NS_ENUM(NSUInteger, FSCalendarTransitionState) {
+    FSCalendarTransitionStateIdle,
+    FSCalendarTransitionStateChanging,
+    FSCalendarTransitionStateFinishing,
+};
+
 
 
